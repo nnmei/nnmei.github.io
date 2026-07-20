@@ -17,8 +17,6 @@
       --accent-hover: #0284c7;
     }
 
-    
-
     * {
       box-sizing: border-box;
       margin: 0;
@@ -227,7 +225,7 @@
           <h3>Custom Pixel Graphics Engine</h3>
           <span>HTML5 Canvas & Pure JavaScript</span>
           <p style="font-size: 0.9rem; margin-top: 5px;">
-            ระบบ Render ภาพแบบ Custom Rasterization เขียนอัลกอริทึมการลงสีภาพแบบ Pixel-by-Pixel[cite: 1] รองรับการคำนวณการหมุน (Rotation Matrix) และย่อขยายขนาด (Scaling)[cite: 1]
+            ระบบ Render ภาพแบบ Custom Rasterization เขียนอัลกอริทึมการลงสีภาพแบบ Pixel-by-Pixel รองรับการคำนวณการหมุน (Rotation Matrix) และย่อขยายขนาด (Scaling)
           </p>
         </div>
       </div>
@@ -243,12 +241,34 @@
 <script>
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
-const imageData = ctx.createImageData(canvas.width, canvas.height);
-const pixels = imageData.data; // Array of color [R,G,B,A, R,G,B,A, ...]
+
+// แยก Canvas สำหรับชั้นที่วาด (Drawing Layer) ไม่ให้โดนล้างเมื่อ Render สไปรท์
+const drawCanvas = document.createElement('canvas');
+drawCanvas.width = canvas.width;
+drawCanvas.height = canvas.height;
+const drawCtx = drawCanvas.getContext('2d');
+
+// ImageData สำหรับ Layer วาดเขียน
+let drawImageData = drawCtx.createImageData(canvas.width, canvas.height);
+let drawPixels = drawImageData.data;
+
+// เคลียร์พื้นหลังกระดาษวาดให้เป็นสีขาวเริ่มต้น
+for (let i = 0; i < drawPixels.length; i += 4) {
+  drawPixels[i] = 255;     // R
+  drawPixels[i+1] = 255; // G
+  drawPixels[i+2] = 255; // B
+  drawPixels[i+3] = 255; // A
+}
+drawCtx.putImageData(drawImageData, 0, 0);
+
+// ImageData สำหรับหน้าจอหลักที่จะ Render ออกไป
+const displayImageData = ctx.createImageData(canvas.width, canvas.height);
+const displayPixels = displayImageData.data;
+
 let isDragging = false;
 let previousX = 0;
 let previousY = 0;
-let r=0, g=0, b=0;
+let r = 255, g = 0, b = 0; // ตั้งค่าเริ่มต้นเป็นสีแดง
 let degree = 0;
 let scale = 1;
 let mouseX = 250, mouseY = 250;
@@ -263,55 +283,56 @@ function toScaledMousePos(posX, posY) {
   };
 }
 
-function putPixel(x, y, r, g, b, a = 255) {
+function putPixel(pixelsArr, x, y, r, g, b, a = 255) {
   if (x < 0 || x >= canvas.width || y < 0 || y >= canvas.height) return;
   const idx = (y * canvas.width + x) * 4;
-  pixels[idx] = r;
-  pixels[idx + 1] = g;
-  pixels[idx + 2] = b;
-  pixels[idx + 3] = a;
+  pixelsArr[idx] = r;
+  pixelsArr[idx + 1] = g;
+  pixelsArr[idx + 2] = b;
+  pixelsArr[idx + 3] = a;
 }
 
 function drawLine(x1, y1, x2, y2, r, g, b, a = 255) {
   const dx = Math.abs(x2 - x1);
   const dy = Math.abs(y2 - y1);
 
-  if(dx > dy) {
-    const m = (y2 - y1) / (x2 - x1);
+  if (dx > dy) {
+    const m = (x2 - x1) === 0 ? 0 : (y2 - y1) / (x2 - x1);
     const c = y1 - m * x1;
-    for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x++) {
+    const step = x1 < x2 ? 1 : -1;
+    for (let x = x1; x !== x2 + step; x += step) {
       const y = Math.round(m * x + c);
-      putPixel(x, y, r, g, b, a);
+      putPixel(drawPixels, x, y, r, g, b, a);
     }
   } else {
-    const m = (x2 - x1) / (y2 - y1);
+    const m = (y2 - y1) === 0 ? 0 : (x2 - x1) / (y2 - y1);
     const c = x1 - m * y1;
-    for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y++) {
+    const step = y1 < y2 ? 1 : -1;
+    for (let y = y1; y !== y2 + step; y += step) {
       const x = Math.round(m * y + c);
-      putPixel(x, y, r, g, b, a);
+      putPixel(drawPixels, x, y, r, g, b, a);
     }
   }
 }
 
-function drawRectFilled(x1, y1, x2, y2, r, g, b, a = 255) {
-  for (let y = y1; y <= y2; y++) {
-    for (let x = x1; x <= x2; x++) {
-      putPixel(x, y, r, g, b, a);
-    }
-  }
-}
+function drawRectFilled(pixelsArr, x1, y1, x2, y2, r, g, b, a = 255) {
+  const startX = Math.max(0, Math.min(x1, x2));
+  const endX = Math.min(canvas.width - 1, Math.max(x1, x2));
+  const startY = Math.max(0, Math.min(y1, y2));
+  const endY = Math.min(canvas.height - 1, Math.max(y1, y2));
 
-function drawEllipse(cx, cy, rx, ry, r, g, b, a = 255) {
-  for (let y = -ry; y <= ry; y++) {
-    for (let x = -rx; x <= rx; x++) {
-      if ((x * x) / (rx * rx) + (y * y) / (ry * ry) <= 1) {
-        putPixel(cx + x, cy + y, r, g, b, a);
-      }
+  for (let y = startY; y <= endY; y++) {
+    for (let x = startX; x <= endX; x++) {
+      putPixel(pixelsArr, x, y, r, g, b, a);
     }
   }
 }
 
 function drawSpriteRotateScale(sprite, x, y, degree, scaleX, scaleY) {
+  const rad = degree * Math.PI / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+
   for (let j = 0; j < sprite.length; j++) {
     for (let i = 0; i < sprite[j].length; i++) {
       const colorVal = sprite[j][i];
@@ -319,15 +340,18 @@ function drawSpriteRotateScale(sprite, x, y, degree, scaleX, scaleY) {
         const cX = i - (sprite[j].length / 2);
         const cY = j - (sprite.length / 2);
 
-        const rad = degree * Math.PI / 180;
-        const x_rotated = Math.round(cX * Math.cos(rad) - cY * Math.sin(rad));
-        const y_rotated = Math.round(cX * Math.sin(rad) + cY * Math.cos(rad));
+        const x_rotated = cX * cos - cY * sin;
+        const y_rotated = cX * sin + cY * cos;
 
         const x_scaled = Math.round(x_rotated * scaleX);
         const y_scaled = Math.round(y_rotated * scaleY);
 
         const [r_c, g_c, b_c] = colorPalette[colorVal];
-        drawEllipse(x + x_scaled, y + y_scaled, Math.round(scaleX), Math.round(scaleY), r_c, g_c, b_c);
+        
+        // วาดเป็นบล็อกสี่เหลี่ยมพิกเซล
+        const szX = Math.max(1, Math.round(scaleX));
+        const szY = Math.max(1, Math.round(scaleY));
+        drawRectFilled(displayPixels, x + x_scaled, y + y_scaled, x + x_scaled + szX - 1, y + y_scaled + szY - 1, r_c, g_c, b_c);
       }
     }
   }
@@ -361,6 +385,9 @@ const smileSprite = [
 
 canvas.addEventListener('mousedown', (event) => {
   isDragging = true;
+  const { x, y } = toScaledMousePos(event.clientX, event.clientY);
+  previousX = x;
+  previousY = y;
 });
 
 canvas.addEventListener('mouseup', () => {
@@ -374,28 +401,36 @@ canvas.addEventListener('mousemove', (event) => {
 
   if (isDragging) {
     drawLine(previousX, previousY, x, y, r, g, b);
-    ctx.putImageData(imageData, 0, 0);
+    previousX = x;
+    previousY = y;
   } 
-  previousX = x;
-  previousY = y;
 });
 
 window.addEventListener('keydown', (event) => {
-  if(event.key === '1') { r = 255; g = 0; b = 0; }
-  else if(event.key === '2') { r = 0; g = 255; b = 0; }
-  else if(event.key === '3') { r = 0; g = 0; b = 255; }
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
+    event.preventDefault();
+  }
 
-  if(event.key === 'ArrowLeft') degree -= 5;
-  else if(event.key === 'ArrowRight') degree += 5;
+  if (event.key === '1') { r = 255; g = 0; b = 0; }
+  else if (event.key === '2') { r = 0; g = 255; b = 0; }
+  else if (event.key === '3') { r = 0; g = 0; b = 255; }
 
-  if(event.key === 'ArrowUp') scale += 0.1;
-  else if(event.key === 'ArrowDown') scale = Math.max(0.1, scale - 0.1);
+  if (event.key === 'ArrowLeft') degree -= 5;
+  else if (event.key === 'ArrowRight') degree += 5;
+
+  if (event.key === 'ArrowUp') scale += 0.1;
+  else if (event.key === 'ArrowDown') scale = Math.max(0.1, scale - 0.1);
 });
 
 function animate() {
-  drawRectFilled(0, 0, canvas.width - 1, canvas.height - 1, 255, 255, 255);
+  // 1. คัดลอกชั้นกระดาษที่วาดไว้มาลงใน Display Buffer
+  displayPixels.set(drawPixels);
+
+  // 2. วาด Sprite ทับลงไปเฉพาะเฟรมนี้
   drawSpriteRotateScale(smileSprite, mouseX, mouseY, degree, scale, scale);
-  ctx.putImageData(imageData, 0, 0);
+
+  // 3. แสดงผลออก Canvas
+  ctx.putImageData(displayImageData, 0, 0);
   requestAnimationFrame(animate);
 }
 
