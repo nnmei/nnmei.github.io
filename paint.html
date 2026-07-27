@@ -1,0 +1,313 @@
+<html>
+<head>
+  <link rel="stylesheet" href="style.css">
+<title>Raster Graphics</title>
+</head>
+  <h5>กดแป้นพิมพ์เพื่อใช้คำสั่ง</h5>
+  <p>a = วงกลม/วงรี | s = ดินสอ | d = สี่เหลี่ยม | f = เส้นตรง</p>
+  <p>1=แดง 2=เขียว 3=น้ำเงิน 4=เหลือง 5=ฟ้า 6=ชมพู 7=ส้ม 8=ม่วง 9=ดำ 0=ขาว (ยางลบ)</p>
+  <p>ArrowUp = เพิ่มความหนาเส้น | ArrowDown = ลดความหนาเส้น</p>
+  <p>กดปุ่มทึบ/โปร่งเพื่อเลือกว่าจะระบายสีวงกลม/สี่เหลี่ยมไหม</p>
+  <div class="tool">
+    <button class="btn-tool" onclick="currentTool='circle'">วงกลม/วงรี</button>
+    <button class="btn-tool" onclick="currentTool='line'">ดินสอ</button>
+    <button class="btn-tool" onclick="currentTool='square'">สี่เหลี่ยม</button>
+    <button class="btn-tool" onclick="currentTool='straight'">เส้นตรง</button>
+    <button class="btn-tool" onclick="linewidth++">+</button>
+    <button class="btn-tool" onclick="if(linewidth>1)linewidth--">-</button>
+    <button class="btn-tool" onclick="isFilled = !isFilled; this.innerText = isFilled ? 'ทึบ' : 'โปร่ง'">โปร่ง</button>
+    <br>
+    <button class="btn-color c-red" onclick="r=255;g=0;b=0">แดง</button>
+    <button class="btn-color c-green" onclick="r=0;g=255;b=0">เขียว</button>
+    <button class="btn-color c-blue" onclick="r=0;g=0;b=255">น้ำเงิน</button>
+    <button class="btn-color c-yellow" onclick="r=255;g=255;b=0">เหลือง</button>
+    <button class="btn-color c-cyan" onclick="r=0;g=255;b=255">ฟ้า</button>
+    <button class="btn-color c-magenta" onclick="r=255;g=0;b=255">ชมพู</button>
+    <button class="btn-color c-orange" onclick="r=255;g=165;b=0">ส้ม</button>
+    <button class="btn-color c-purple" onclick="r=128;g=0;b=128">ม่วง</button>
+    <button class="btn-color c-black" onclick="r=0;g=0;b=0">ดำ</button>
+    <button class="btn-color c-white" onclick="r=255;g=255;b=255">ยางลบ</button>
+  </div>
+  
+<body>
+
+<canvas id="canvas" width="500" height="500"
+style="width:500px; height:500px; border:1px solid #000; image-rendering: pixelated;">
+</canvas>
+
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const imageData = ctx.createImageData(canvas.width, canvas.height);
+const pixels = imageData.data; // Array of color [R,G,B,A, R,G,B,A, ...]
+let isDragging = false;
+let previousX = 0;
+let previousY = 0;
+let r=0, g=0, b=0;
+let currentTool = 'line';
+let startX = 0;
+let startY = 0;
+let linewidth = 1;
+let isFilled = false;
+
+function toScaledMousePos(posX, posY) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  return {
+    x: Math.floor((posX - rect.left) * scaleX),
+    y: Math.floor((posY - rect.top) * scaleY)
+  };
+}
+
+function putPixel(x, y, r, g, b, a = 255) {
+  for (let dy = 0; dy < linewidth; dy++) {
+    for (let dx = 0; dx < linewidth; dx++) {
+      const px = x + dx;
+      const py = y + dy;
+
+      if (px >= 0 && px < canvas.width && py >= 0 && py < canvas.height) {
+        const idx = (py * canvas.width + px) * 4;
+        pixels[idx]     = r;
+        pixels[idx + 1] = g;
+        pixels[idx + 2] = b;
+        pixels[idx + 3] = a;
+      }
+    }
+  }
+}
+
+function drawLine(x1, y1, x2, y2, r, g, b, a = 255) {
+  const dx = Math.abs(x2 - x1);
+  const dy = Math.abs(y2 - y1);
+
+  if(dx > dy) {
+    const m = (y2 - y1) / (x2 - x1);
+    const c = y1 - m * x1;
+    for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x++) {
+      const y = Math.round(m * x + c);
+      putPixel(x, y, r, g, b, a);
+    }
+  } else {
+    const m = (x2 - x1) / (y2 - y1);
+    const c = x1 - m * y1;
+    for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y++) {
+      const x = Math.round(m * y + c);
+      putPixel(x, y, r, g, b, a);
+    }
+  }
+}
+
+function drawRect(x1, y1, x2, y2, r, g, b, a = 255) {
+  drawLine(x1, y1, x2, y1, r, g, b, a); // Top edge
+  drawLine(x2, y1, x2, y2, r, g, b, a); // Right edge
+  drawLine(x2, y2, x1, y2, r, g, b, a); // Bottom edge
+  drawLine(x1, y2, x1, y1, r, g, b, a); // Left edge
+}
+
+function drawRectFilled(x1, y1, x2, y2, r, g, b, a = 255) {
+  for (let y = y1; y <= y2; y++) {
+    for (let x = x1; x <= x2; x++) {
+      putPixel(x, y, r, g, b, a);
+    }
+  }
+}
+
+function drawRectGradient(x1, y1, x2, y2, r1, g1, b1, r2, g2, b2) {
+  for (let y = y1; y <= y2; y++) {
+    const t = (y - y1) / (y2 - y1);
+    const r = Math.round(r1 * (1 - t) + r2 * t);
+    const g = Math.round(g1 * (1 - t) + g2 * t);
+    const b = Math.round(b1 * (1 - t) + b2 * t);
+    for (let x = x1; x <= x2; x++) {
+      putPixel(x, y, r, g, b);
+    }
+  }
+}
+
+function drawEllipse(cx, cy, rx, ry, r, g, b, a = 255) {
+  for (let y = -ry; y <= ry; y++) {
+    for (let x = -rx; x <= rx; x++) {
+       const val = (x * x) / (rx * rx) + (y * y) / (ry * ry)
+        if (Math.abs(val - 1) < (1.5 / Math.min(rx, ry))) {
+        putPixel(cx + x, cy + y, r, g, b, a);
+      }
+    }
+  }
+}
+
+function drawEllipseFilled(cx, cy, rx, ry, r, g, b, a = 255) {
+  for (let y = -ry; y <= ry; y++) {
+    for (let x = -rx; x <= rx; x++) {
+      if ((x * x) / (rx * rx) + (y * y) / (ry * ry) <= 1) {
+        putPixel(cx + x, cy + y, r, g, b, a);
+      }
+    }
+  }
+}
+
+function drawSprite(sprite, x, y, r, g, b, a = 255) {
+  for (let j = 0; j < sprite.length; j++) {
+    for (let i = 0; i < sprite[j].length; i++) {
+      if (sprite[j][i] === 1) {
+        putPixel(x + i, y + j, r, g, b, a);
+      }
+    }
+  }
+}
+
+// canvas.addEventListener('click', (event) => {
+//   console.log('Click at:', event.offsetX, event.offsetY);
+//   const {x,y} = toScaledMousePos(event.clientX, event.clientY);
+//   putPixel(x,y,0,255,0);
+//   ctx.putImageData(imageData, 0, 0);
+//   });
+
+canvas.addEventListener('mousedown', (event) => {
+  isDragging = true;
+  console.log('Mousedown', event.offsetX, event.offsetY);
+
+  const scaleX = canvas.width / canvas.clientWidth;
+  const scaleY = canvas.height / canvas.clientHeight;
+
+  startX = Math.floor(event.offsetX * scaleX);
+  startY = Math.floor(event.offsetY * scaleY);
+
+  previousX = startX;
+  previousY = startY;
+  });
+
+canvas.addEventListener('mouseup', (event) => {
+
+  const scaleX = canvas.width / canvas.clientWidth;
+  const scaleY = canvas.height / canvas.clientHeight;
+
+  const x = Math.floor(event.offsetX * scaleX);
+  const y = Math.floor(event.offsetY * scaleY);
+  console.log('Mouseup', event.offsetX, event.offsetY);
+
+  if (currentTool === 'circle') {
+    const cx = Math.floor((startX + x) / 2);
+    const cy = Math.floor((startY + y) / 2);
+
+    const rx = Math.floor(Math.abs(x - startX) / 2);
+    const ry = Math.floor(Math.abs(y - startY) / 2);
+    
+    if (rx > 0 && ry > 0) {
+      if (isFilled) {
+      drawEllipseFilled(cx, cy, rx, ry, r, g, b); // วาดทึบ
+      } else {
+      drawEllipse(cx, cy, rx, ry, r, g, b);       // วาดโปร่ง (เส้นขอบ)
+      }
+      ctx.putImageData(imageData, 0, 0);
+    }
+  }
+
+  if(currentTool === 'square') {
+    const minX = Math.min(startX, x);
+    const maxX = Math.max(startX, x);
+    const minY = Math.min(startY, y);
+    const maxY = Math.max(startY, y);
+
+    const width = Math.abs(x - startX);
+    const height = Math.abs(y - startY);
+
+    if (isFilled) {
+      drawRectFilled(minX, minY, maxX, maxY, r, g, b);
+    } else {
+      drawRect(minX, minY, maxX, maxY, r, g, b);
+    }
+    ctx.putImageData(imageData, 0, 0);
+  }
+
+  if(currentTool === 'straight') {
+
+    drawLine(startX, startY, x, y, r, g, b);
+    ctx.putImageData(imageData, 0, 0);
+  }
+
+  isDragging = false;
+  });
+
+canvas.addEventListener('mousemove', (event) => {
+ // console.log('Mousemove', event.offsetX, event.offsetY);
+  const {x,y} = toScaledMousePos(event.clientX, event.clientY);  
+  if (isDragging == true && currentTool === 'line') {
+    drawLine(previousX,previousY,x,y,r,g,b);
+    ctx.putImageData(imageData, 0, 0);
+    }
+    
+    previousX = x;
+    previousY = y;
+  });
+
+window.addEventListener('keydown', (event) => {
+  console.log('key pressed: ',event.key);
+
+  if(event.key === 'a') {
+    currentTool = 'circle';
+    console.log('Circle tool');
+  } else if(event.key === 's') {
+    currentTool = 'line';
+    console.log('Line tool');
+  } else if(event.key === 'd') {
+    currentTool = 'square';
+    console.log('Square tool');
+  } else if(event.key === 'f') {
+    currentTool = 'straight';
+    console.log('Straight tool');
+  }
+
+  if (event.key === '1') {
+    r = 255 , g = 0, b = 0;
+  } else if(event.key === '2') {
+    r = 0, g = 255, b = 0;
+  } else if(event.key === '3') {
+    r = 0, g = 0, b = 255;
+  } else if(event.key === '4') {
+    r = 255, g = 255, b = 0;
+  } else if(event.key === '5') {
+    r = 0, g = 255, b = 255;
+  } else if(event.key === '6') {
+    r = 255; g = 0,   b = 255;
+  } else if(event.key === '7') {
+    r = 255; g = 165; b = 0;
+  } else if(event.key === '8') {
+    r = 128; g = 0;   b = 128;
+  } else if(event.key === '9') {
+    r = 0;   g = 0;   b = 0;
+  } else if(event.key === '0') {
+    r = 255; g = 255; b = 255;
+  }
+
+  if (event.key === 'ArrowUp') {
+    linewidth++;
+    console.log('Linewidth:', linewidth);
+  } else if (event.key === 'ArrowDown') {
+    if (linewidth > 1) {
+      linewidth--;
+    } else {
+      linewidth = 1;
+    }
+  } 
+  console.log('Linewidth:', linewidth);
+
+});
+window.addEventListener('keyup', (event) => {
+  console.log('key up: ',event.key);
+}) 
+
+//drawLine(10, 10, 12, 190, 255, 0, 0); // Draw a red line
+//drawRect(50, 70, 150, 120, 0, 255, 0); // Draw a green rectangle
+//drawRectFilled(60, 80, 140, 110, 0, 0, 255); // Draw a filled blue rectangle
+//drawRectGradient(160, 70, 190, 120, 255, 0, 0, 0, 255, 0); // Draw a gradient rectangle
+//drawEllipse(100, 150, 30, 60, 255, 255, 0); // Draw a yellow ellipse
+
+
+
+ctx.putImageData(imageData, 0, 0);
+
+</script>
+</body>
+</html>
