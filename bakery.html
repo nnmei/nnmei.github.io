@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Model Viewer - Project</title>
+  
+  <!-- โหลดไลบรารี model-viewer ของ Google -->
+  <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background-color: #1a1a1a;
+      color: #ffffff;
+      font-family: sans-serif;
+    }
+    h1 {
+      margin-bottom: 20px;
+    }
+    model-viewer {
+      width: 80vw;
+      height: 70vh;
+      background-color: #2b2b2b;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    }
+  </style>
+</head>
+<body>
+
+  <h1>3D Model: Project</h1>
+
+  <!-- แท็กสำหรับแสดงผลโมเดล 3 มิติ -->
+  <model-viewer 
+    src="https://raw.githubusercontent.com/nnmei/nnmei.github.io/main/project6.glb" 
+    alt="Project 3D Model"
+    auto-rotate 
+    camera-controls 
+    shadow-intensity="1" 
+    touch-action="pan-y">
+  </model-viewer>
+
+</body>
+</html>
