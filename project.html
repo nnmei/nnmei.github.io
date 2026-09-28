@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <title>3D Room Viewer</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #222; font-family: sans-serif; }
+    #menu {
+      position: absolute; bottom: 20px; left: 50%;
+      transform: translateX(-50%); display: flex; gap: 8px; z-index: 10;
+    }
+    button {
+      padding: 10px 16px; border-radius: 8px; border: none;
+      background: white; font-weight: bold; cursor: pointer;
+    }
+    button:hover { background: #ffaa00; color: white; }
+    
+    /* กล่องข้อความบอกพิกัดบนหน้าจอ */
+    #cam-info {
+      position: absolute; top: 15px; left: 15px;
+      background: rgba(0, 0, 0, 0.75); color: #00ffcc;
+      padding: 10px 14px; border-radius: 6px; font-family: monospace;
+      font-size: 13px; pointer-events: none; z-index: 20;
+      line-height: 1.5;
+    }
+  </style>
+
+  <!-- Three.js + Addons + GSAP -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+</head>
+<body>
+
+  <!-- กล่องแสดงพิกัดแบบเรียลไทม์บนจอ -->
+  <div id="cam-info">กำลังโหลดพิกัดกล้อง...</div>
+
+  <!-- ปุ่มกดเลือกมุมมอง -->
+  <div id="menu">
+    <button onclick="setView('overview')">ภาพรวม</button>
+    <button onclick="setView('bakery')">หน้าเบเกอรี่</button>
+    <button onclick="setView('piano')">หน้าเปียโน</button>
+    <button onclick="setView('microwave')">หน้าไมโครเวฟ</button>
+    <button onclick="setView('name')">หน้าชื่อ</button>
+    <button onclick="setView('photo')">หน้ารูปภาพของฉัน</button>
+  </div>
+
+  <script>
+    // ==========================================
+    // ⚙️ ส่วนที่ 1: ตั้งค่าพิกัด (ปรับแก้ X, Y, Z ตรงนี้)
+    // ==========================================
+    
+    // 1. แสงแดด (Sun Light)
+    const SUN_CONFIG = {
+      x: .9, y: 5.6, z: -4.3,
+      color: 0xffffff,
+      intensity: 1.5
+    };
+
+    // 2. แสงไมโครเวฟ (Point Light)
+    const MICROWAVE_LIGHT_CONFIG = {
+      x: 2.4, y: 0.3, z: -2.0,
+      color: 0xff7700,
+      intensity: 3.0,
+      distance: 5.0
+    };
+
+    // 3. พิกัดกล้อง
+    const CAMERA_VIEWS = {
+      overview: {
+        camera: { x: 0.0, y: 6.0, z: 8.0 },
+        target: { x: 0.0, y: 1.0, z: 0.0 }
+      },
+      bakery: {
+        camera: { x: -10.61, y: 4.33, z: -0.05 },
+        target: { x: -0.45, y: 0.12, z: 0.05 }
+      },
+      piano: {
+        camera: { x: -1.66, y: 5.31, z: 2.07 },
+        target: { x: 2.58, y: 1.14, z: 1.41 }
+      },
+      microwave: {
+        camera: { x: 2.4, y: 1.0, z: -0.5 },
+        target: { x: 2.4, y: 0.3, z: -2.5 }
+      },
+      name: {
+        camera: { x: -0.4, y: 5.22, z: 2.21 },
+        target: { x: -1, y: 3.4, z: -3.3 }
+      },
+      photo: {
+        camera: { x: 0.99, y: 2.11, z: 2.41 },
+        target: { x: 2.79, y: 1.82, z: 2.53 }
+      }
+    };
+
+
+    // ==========================================
+    // 🎬 ส่วนที่ 2: เริ่มการสร้างฉาก THREE.JS
+    // ==========================================
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x333333);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+    
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+
+    // --- จัดแสง ---
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    scene.add(ambientLight);
+
+    const sunLight = new THREE.DirectionalLight(SUN_CONFIG.color, SUN_CONFIG.intensity);
+    sunLight.position.set(SUN_CONFIG.x, SUN_CONFIG.y, SUN_CONFIG.z);
+    scene.add(sunLight);
+
+    const ovenLight = new THREE.PointLight(
+      MICROWAVE_LIGHT_CONFIG.color,
+      MICROWAVE_LIGHT_CONFIG.intensity,
+      MICROWAVE_LIGHT_CONFIG.distance
+    );
+    ovenLight.position.set(MICROWAVE_LIGHT_CONFIG.x, MICROWAVE_LIGHT_CONFIG.y, MICROWAVE_LIGHT_CONFIG.z);
+    scene.add(ovenLight);
+
+
+    // ==========================================
+    // 📦 ส่วนที่ 3: โหลดไฟล์โมเดล GLB
+    // ==========================================
+    const loader = new THREE.GLTFLoader();
+    const modelUrl = 'https://raw.githubusercontent.com/nnmei/nnmei.github.io/main/project14.glb';
+
+    loader.load(modelUrl, (gltf) => {
+      scene.add(gltf.scene);
+      setView('overview', false);
+    });
+
+
+    // ==========================================
+    // 🎯 ส่วนที่ 4: ฟังก์ชันสลับมุมกล้อง
+    // ==========================================
+    function setView(name, animated = true) {
+      const view = CAMERA_VIEWS[name];
+      if (!view) return;
+
+      if (animated) {
+        gsap.to(camera.position, {
+          x: view.camera.x, y: view.camera.y, z: view.camera.z,
+          duration: 1.2, ease: 'power2.inOut'
+        });
+        gsap.to(controls.target, {
+          x: view.target.x, y: view.target.y, z: view.target.z,
+          duration: 1.2, ease: 'power2.inOut',
+          onUpdate: () => controls.update()
+        });
+      } else {
+        camera.position.set(view.camera.x, view.camera.y, view.camera.z);
+        controls.target.set(view.target.x, view.target.y, view.target.z);
+        controls.update();
+      }
+    }
+
+
+    // ==========================================
+    // 🔍 ส่วนที่ 5: พิมพ์พิกัดกล้อง (Console.log + หน้าจอ)
+    // ==========================================
+    const infoBox = document.getElementById('cam-info');
+
+    function logCameraPosition() {
+      const cam = {
+        x: parseFloat(camera.position.x.toFixed(2)),
+        y: parseFloat(camera.position.y.toFixed(2)),
+        z: parseFloat(camera.position.z.toFixed(2))
+      };
+      const tgt = {
+        x: parseFloat(controls.target.x.toFixed(2)),
+        y: parseFloat(controls.target.y.toFixed(2)),
+        z: parseFloat(controls.target.z.toFixed(2))
+      };
+
+      // 1. แสดงผลบนมุมซ้ายบนของหน้าจอ
+      infoBox.innerHTML = `
+        📷 Camera: { x: ${cam.x}, y: ${cam.y}, z: ${cam.z} }<br>
+        🎯 Target: { x: ${tgt.x}, y: ${tgt.y}, z: ${tgt.z} }
+      `;
+
+      // 2. ปริ้นท์ลง Console ในรูปแบบโค้ดพร้อมก๊อบปี้ไปวางใน CAMERA_VIEWS
+      console.log(`camera: { x: ${cam.x}, y: ${cam.y}, z: ${cam.z} }, target: { x: ${tgt.x}, y: ${tgt.y}, z: ${tgt.z} }`);
+    }
+
+    // ทำงานทุกครั้งที่หมุน/ซูม/เลื่อนกล้องเสร็จ
+    controls.addEventListener('end', logCameraPosition);
+
+    // กดปุ่มตัวอักษร 'C' บนแป้นพิมพ์เพื่อสั่งปริ้นท์พิกัดทันทีได้เช่นกัน
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'c' || e.key === 'C') {
+        console.warn('--- พิกัดมุมมองปัจจุบัน ---');
+        logCameraPosition();
+      }
+    });
+
+    // Resize
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // Animate Loop
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>
