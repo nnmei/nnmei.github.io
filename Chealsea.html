@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Room Viewer</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #222; font-family: sans-serif; }
+    #menu {
+      position: absolute; bottom: 20px; left: 50%;
+      transform: translateX(-50%); display: flex; gap: 8px; z-index: 10;
+      flex-wrap: wrap; justify-content: center; width: 90%; max-width: 600px;
+    }
+    button {
+      padding: 10px 16px; border-radius: 8px; border: none;
+      background: white; font-weight: bold; cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3); transition: 0.2s;
+    }
+    button:hover { background: #ffaa00; color: white; }
+    
+    /* กล่องข้อความบอกพิกัดบนหน้าจอ */
+    #cam-info {
+      position: absolute; top: 15px; left: 15px;
+      background: rgba(0, 0, 0, 0.75); color: #00ffcc;
+      padding: 10px 14px; border-radius: 6px; font-family: monospace;
+      font-size: 13px; pointer-events: none; z-index: 20;
+      line-height: 1.5;
+    }
+  </style>
+
+  <!-- Three.js + Addons + GSAP -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+</head>
+<body>
+
+  <!-- กล่องแสดงพิกัดแบบเรียลไทม์บนจอ -->
+  <div id="cam-info">กำลังโหลดพิกัดกล้อง...</div>
+
+  <!-- ปุ่มกดเลือกมุมมอง -->
+  <div id="menu">
+    <button onclick="setView('overview')">ทั้งห้อง</button>
+    <button onclick="setView('COM')">หน้าจอคอม</button>
+    <button onclick="setView('TV')">หน้าจอTV</button>
+    <button onclick="setView('BED')">เตียงนอน</button>
+    <button onclick="setView('WINDOW')">หน้าต่าง</button>
+  </div>
+
+  <script>
+    // ==========================================
+    // ⚙️ ส่วนที่ 1: ตั้งค่าพิกัด (คงค่าเดิมทั้งหมด)
+    // ==========================================
+    
+    // 1. แสงแดด (Sun Light)
+    const SUN_CONFIG = {
+      x: -0.71, y: 5.08, z: -0.29,
+      color: 0xffffff,
+      intensity: 1.5
+    };
+
+    // 2. แสงไมโครเวฟ (Point Light)
+    const MICROWAVE_LIGHT_CONFIG = {
+      x: -0.71, y: 5.08, z: -0.29,
+      color: 0xffffff,
+      intensity: 3.0,
+      distance: 8.0
+    };
+
+    // 3. พิกัดกล้อง
+    const CAMERA_VIEWS = {
+      overview: {
+        camera: { x: 0.0, y: 6.0, z: 8.0 },
+        target: { x: 0.0, y: 1.0, z: 0.0 }
+      },
+      COM: {
+        camera: { x: 1.53, y: 2.53, z: -1.35 },
+        target: { x: 1.52, y: 2.51, z: -1.51 }
+      },
+      TV: {
+        camera: { x: 1.65, y: 2.02, z: -1.05 },
+        target: { x: 1.99, y: 2.1, z: -1.06 }
+      },
+      BED: {
+        camera: { x: 0.72, y: 3.77, z: 2.33 },
+        target: { x: -1.33, y: 1.89, z: 0.11 }
+      },
+      WINDOW: {
+        camera: { x: -1.74, y: 2.52, z: -0.52 },
+        target: { x: -1.66, y: 2.75, z: -1.47 }
+      }
+    };
+
+
+    // ==========================================
+    // 🎬 ส่วนที่ 2: เริ่มการสร้างฉาก THREE.JS
+    // ==========================================
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x333333);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+    
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+
+    // --- จัดแสง ---
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    scene.add(ambientLight);
+
+    const sunLight = new THREE.DirectionalLight(SUN_CONFIG.color, SUN_CONFIG.intensity);
+    sunLight.position.set(SUN_CONFIG.x, SUN_CONFIG.y, SUN_CONFIG.z);
+    scene.add(sunLight);
+
+    const ovenLight = new THREE.PointLight(
+      MICROWAVE_LIGHT_CONFIG.color,
+      MICROWAVE_LIGHT_CONFIG.intensity,
+      MICROWAVE_LIGHT_CONFIG.distance
+    );
+    ovenLight.position.set(MICROWAVE_LIGHT_CONFIG.x, MICROWAVE_LIGHT_CONFIG.y, MICROWAVE_LIGHT_CONFIG.z);
+    scene.add(ovenLight);
+
+
+    // ==========================================
+    // 📦 ส่วนที่ 3: โหลดไฟล์โมเดล GLB
+    // ==========================================
+    const loader = new THREE.GLTFLoader();
+    const modelUrl = 'https://warada-800.github.io/Warada-800.github.io_wed-Page/BEDROOM19.glb';
+
+    loader.load(modelUrl, (gltf) => {
+      scene.add(gltf.scene);
+      setView('overview', false);
+    });
+
+
+    // ==========================================
+    // 🎯 ส่วนที่ 4: ฟังก์ชันสลับมุมกล้อง (แก้กล้องค้าง)
+    // ==========================================
+    function setView(name, animated = true) {
+      const view = CAMERA_VIEWS[name];
+      if (!view) return;
+
+      // หยุดแอนิเมชันเก่าทันทีเพื่อไม่ให้กล้องล็อคหรือขัดจังหวะ
+      gsap.killTweensOf(camera.position);
+      gsap.killTweensOf(controls.target);
+
+      if (animated) {
+        gsap.to(camera.position, {
+          x: view.camera.x, y: view.camera.y, z: view.camera.z,
+          duration: 1.2, ease: 'power2.out'
+        });
+        gsap.to(controls.target, {
+          x: view.target.x, y: view.target.y, z: view.target.z,
+          duration: 1.2, ease: 'power2.out',
+          onUpdate: () => controls.update()
+        });
+      } else {
+        camera.position.set(view.camera.x, view.camera.y, view.camera.z);
+        controls.target.set(view.target.x, view.target.y, view.target.z);
+        controls.update();
+      }
+    }
+
+
+    // ==========================================
+    // 🖱️ ส่วนที่ 5: 3D Interaction (แยกการแตะ vs ลากหมุน)
+    // ==========================================
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    let startX = 0;
+    let startY = 0;
+
+    // จำจุดเริ่มต้นที่แตะ
+    window.addEventListener('pointerdown', (event) => {
+      startX = event.clientX;
+      startY = event.clientY;
+    });
+
+    // ตรวจสอบตอนปล่อยนิ้ว/เมาส์
+    window.addEventListener('pointerup', (event) => {
+      // ข้ามถ้าแตะโดนปุ่มเมนู
+      if (event.target.closest('#menu') || (event.target.tagName && event.target.tagName.toLowerCase() === 'button')) {
+        return;
+      }
+
+      // ถ้ามีการลากขยับเกิน 7 pixel ให้ถือว่าตั้งใจหมุนห้อง ไม่เปลี่ยนมุมกล้อง
+      const diffX = Math.abs(event.clientX - startX);
+      const diffY = Math.abs(event.clientY - startY);
+      if (diffX > 7 || diffY > 7) {
+        return;
+      }
+
+      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(scene.children, true);
+
+      if (intersects.length > 0) {
+        const hit = intersects.find(item => item.object.type === 'Mesh');
+        if (!hit) {
+          setView('overview');
+          return;
+        }
+
+        const p = hit.point;
+        console.log(`📍 จุดที่กด: X = ${p.x.toFixed(2)}, Y = ${p.y.toFixed(2)}, Z = ${p.z.toFixed(2)}`);
+
+        // แยกโซนตามตำแหน่งโมเดลในห้องนอน:
+        // 1. หน้าต่าง (ฝั่งซ้าย ลึกด้านหลัง)
+        if (p.x < -0.8 && p.z < -0.6) {
+          setView('WINDOW');
+        }
+        // 2. เตียงนอน (ฝั่งซ้ายของห้อง)
+        else if (p.x < -0.2) {
+          setView('BED');
+        }
+        // 3. จอคอม / โต๊ะคอม (ฝั่งขวา ด้านลึก)
+        else if (p.x > 0.7 && p.z < -0.7) {
+          setView('COM');
+        }
+        // 4. จอ TV (ฝั่งขวา)
+        else if (p.x > 0.7 && p.z >= -0.7) {
+          setView('TV');
+        }
+        // 5. พื้นห้อง หรือส่วนอื่นๆ ให้กลับภาพรวม
+        else {
+          setView('overview');
+        }
+      } else {
+        // แตะพื้นที่ว่างภายนอกห้อง
+        setView('overview');
+      }
+    });
+
+
+    // ==========================================
+    // 🔍 ส่วนที่ 6: พิมพ์พิกัดกล้อง (Console.log + หน้าจอ)
+    // ==========================================
+    const infoBox = document.getElementById('cam-info');
+
+    function logCameraPosition() {
+      const cam = {
+        x: parseFloat(camera.position.x.toFixed(2)),
+        y: parseFloat(camera.position.y.toFixed(2)),
+        z: parseFloat(camera.position.z.toFixed(2))
+      };
+      const tgt = {
+        x: parseFloat(controls.target.x.toFixed(2)),
+        y: parseFloat(controls.target.y.toFixed(2)),
+        z: parseFloat(controls.target.z.toFixed(2))
+      };
+
+      infoBox.innerHTML = `
+        📷 Camera: { x: ${cam.x}, y: ${cam.y}, z: ${cam.z} }<br>
+        🎯 Target: { x: ${tgt.x}, y: ${tgt.y}, z: ${tgt.z} }
+      `;
+
+      console.log(`camera: { x: ${cam.x}, y: ${cam.y}, z: ${cam.z} }, target: { x: ${tgt.x}, y: ${tgt.y}, z: ${tgt.z} }`);
+    }
+
+    controls.addEventListener('end', logCameraPosition);
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'c' || e.key === 'C') {
+        console.warn('--- พิกัดมุมมองปัจจุบัน ---');
+        logCameraPosition();
+      }
+    });
+
+    // Resize
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // Animate Loop
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>
