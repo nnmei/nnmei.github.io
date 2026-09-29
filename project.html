@@ -12,6 +12,7 @@
     button {
       padding: 10px 16px; border-radius: 8px; border: none;
       background: white; font-weight: bold; cursor: pointer;
+      transition: 0.2s;
     }
     button:hover { background: #ffaa00; color: white; }
     
@@ -36,7 +37,7 @@
   <!-- กล่องแสดงพิกัดแบบเรียลไทม์บนจอ -->
   <div id="cam-info">กำลังโหลดพิกัดกล้อง...</div>
 
-  <!-- ปุ่มกดเลือกมุมมอง -->
+  <!-- ปุ่มกดเลือกมุมมอง (คงไว้ตามเดิม) -->
   <div id="menu">
     <button onclick="setView('overview')">ภาพรวม</button>
     <button onclick="setView('bakery')">หน้าเบเกอรี่</button>
@@ -45,7 +46,6 @@
     <button onclick="setView('name')">หน้าชื่อ</button>
     <button onclick="setView('photo')">หน้ารูปภาพของฉัน</button>
     <button onclick="window.location.href='https://nnmei.github.io/index.html'">Portfolio</button>
-
   </div>
 
   <script>
@@ -53,14 +53,12 @@
     // ⚙️ ส่วนที่ 1: ตั้งค่าพิกัด (ปรับแก้ X, Y, Z ตรงนี้)
     // ==========================================
     
-    // 1. แสงแดด (Sun Light)
     const SUN_CONFIG = {
       x: .9, y: 5.6, z: -4.3,
       color: 0xffffff,
       intensity: 1.5
     };
 
-    // 2. แสงไมโครเวฟ (Point Light)
     const MICROWAVE_LIGHT_CONFIG = {
       x: 2.4, y: 0.3, z: -2.0,
       color: 0xff7700,
@@ -68,7 +66,6 @@
       distance: 5.0
     };
 
-    // 3. พิกัดกล้อง
     const CAMERA_VIEWS = {
       overview: {
         camera: { x: 0.0, y: 6.0, z: 8.0 },
@@ -131,14 +128,43 @@
 
 
     // ==========================================
-    // 📦 ส่วนที่ 3: โหลดไฟล์โมเดล GLB
+    // 📦 ส่วนที่ 3: โหลดไฟล์โมเดล GLB + เตรียม Picking
     // ==========================================
     const loader = new THREE.GLTFLoader();
     const modelUrl = 'https://raw.githubusercontent.com/nnmei/nnmei.github.io/main/project14.glb';
 
+    // รายการวัตถุที่สามารถคลิกได้
+    const clickableObjects = [];
+
     loader.load(modelUrl, (gltf) => {
       scene.add(gltf.scene);
       setView('overview', false);
+
+      // วนลูปเก็บ Mesh และแมปเป้าหมายมุมมองตามชื่อโมเดลที่ตั้งไว้ใน Blender
+      gltf.scene.traverse((child) => {
+        if (child.isMesh) {
+          const name = child.name.toLowerCase();
+          
+          // ตรวจจับชื่อโมเดล (ปรับเปลี่ยนคีย์เวิร์ดให้ตรงกับที่ตั้งชื่อไว้ใน Blender ได้)
+          if (name.includes('piano')) {
+            child.userData = { view: 'piano' };
+            clickableObjects.push(child);
+          } else if (name.includes('micro') || name.includes('oven')) {
+            child.userData = { view: 'microwave' };
+            clickableObjects.push(child);
+          } else if (name.includes('bake') || name.includes('bread') || name.includes('shelf')) {
+            child.userData = { view: 'bakery' };
+            clickableObjects.push(child);
+          } else if (name.includes('board') || name.includes('menu') || name.includes('text') || name.includes('name')) {
+            child.userData = { view: 'name' };
+            clickableObjects.push(child);
+          } else if (name.includes('photo') || name.includes('frame') || name.includes('picture')) {
+            child.userData = { view: 'photo' };
+            clickableObjects.push(child);
+          }
+        }
+      });
+      console.log('วัตถุที่คลิกได้ (Clickable meshes):', clickableObjects);
     });
 
 
@@ -168,7 +194,54 @@
 
 
     // ==========================================
-    // 🔍 ส่วนที่ 5: พิมพ์พิกัดกล้อง (Console.log + หน้าจอ)
+    // 🖱️ ส่วนที่ 5: 3D Interaction (Raycaster Picking)
+    // ==========================================
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    // ดักจับการคลิกบนหน้าจอ 3D
+    window.addEventListener('click', (event) => {
+      // ถ้ากดโดนปุ่ม HTML ให้ข้ามไป ไม่ต้องรัน Raycaster
+      if (event.target.tagName.toLowerCase() === 'button') return;
+
+      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(clickableObjects, true);
+
+      if (intersects.length > 0) {
+        // หา view จาก mesh หรือ parent ของ mesh
+        let hitObj = intersects[0].object;
+        while (hitObj && !hitObj.userData.view && hitObj.parent) {
+          hitObj = hitObj.parent;
+        }
+
+        if (hitObj && hitObj.userData.view) {
+          console.log('Picked object:', hitObj.name, '-> View:', hitObj.userData.view);
+          setView(hitObj.userData.view);
+        }
+      }
+    });
+
+    // เปลี่ยนเคอร์เซอร์เป็นรูปมือเมื่อ Hover ชี้โดนวัตถุที่คลิกได้
+    window.addEventListener('mousemove', (event) => {
+      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(clickableObjects, true);
+
+      if (intersects.length > 0) {
+        document.body.style.cursor = 'pointer';
+      } else {
+        document.body.style.cursor = 'default';
+      }
+    });
+
+
+    // ==========================================
+    // 🔍 ส่วนที่ 6: พิมพ์พิกัดกล้อง (Console.log + หน้าจอ)
     // ==========================================
     const infoBox = document.getElementById('cam-info');
 
@@ -184,20 +257,16 @@
         z: parseFloat(controls.target.z.toFixed(2))
       };
 
-      // 1. แสดงผลบนมุมซ้ายบนของหน้าจอ
       infoBox.innerHTML = `
         📷 Camera: { x: ${cam.x}, y: ${cam.y}, z: ${cam.z} }<br>
         🎯 Target: { x: ${tgt.x}, y: ${tgt.y}, z: ${tgt.z} }
       `;
 
-      // 2. ปริ้นท์ลง Console ในรูปแบบโค้ดพร้อมก๊อบปี้ไปวางใน CAMERA_VIEWS
       console.log(`camera: { x: ${cam.x}, y: ${cam.y}, z: ${cam.z} }, target: { x: ${tgt.x}, y: ${tgt.y}, z: ${tgt.z} }`);
     }
 
-    // ทำงานทุกครั้งที่หมุน/ซูม/เลื่อนกล้องเสร็จ
     controls.addEventListener('end', logCameraPosition);
 
-    // กดปุ่มตัวอักษร 'C' บนแป้นพิมพ์เพื่อสั่งปริ้นท์พิกัดทันทีได้เช่นกัน
     window.addEventListener('keydown', (e) => {
       if (e.key === 'c' || e.key === 'C') {
         console.warn('--- พิกัดมุมมองปัจจุบัน ---');
