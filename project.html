@@ -192,52 +192,63 @@
       }
     }
 
-
     // ==========================================
-    // 🖱️ ส่วนที่ 5: 3D Interaction (Raycaster Picking)
+    // 🖱️ ส่วนที่ 5: 3D Interaction (Picking ด้วยพิกัด 3 มิติ)
     // ==========================================
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
-    // ดักจับการคลิกบนหน้าจอ 3D
-    window.addEventListener('click', (event) => {
-      // ถ้ากดโดนปุ่ม HTML ให้ข้ามไป ไม่ต้องรัน Raycaster
-      if (event.target.tagName.toLowerCase() === 'button') return;
+    function onPointerTrigger(event) {
+      // 1. ถ้าคลิกหรือแตะโดนปุ่ม HTML ให้ข้ามไป
+      if (event.target.closest('#menu') || event.target.tagName.toLowerCase() === 'button') {
+        return;
+      }
 
-      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+      // 2. คำนวณพิกัดจอ (รองรับทั้งเมาส์และนิ้วสัมผัสบนมือถือ)
+      const clientX = event.clientX ?? (event.touches && event.touches[0] ? event.touches[0].clientX : null);
+      const clientY = event.clientY ?? (event.touches && event.touches[0] ? event.touches[0].clientY : null);
+
+      if (clientX === null || clientY === null) return;
+
+      mouse.x = (clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(clientY / window.innerHeight) * 2 + 1;
 
       raycaster.setFromCamera(mouse, camera);
-      const intersects = raycaster.intersectObjects(clickableObjects, true);
+
+      // ยิง Raycaster เข้าไปตรวจจับวัตถุทั้งหมดในฉาก
+      const intersects = raycaster.intersectObjects(scene.children, true);
 
       if (intersects.length > 0) {
-        // หา view จาก mesh หรือ parent ของ mesh
-        let hitObj = intersects[0].object;
-        while (hitObj && !hitObj.userData.view && hitObj.parent) {
-          hitObj = hitObj.parent;
-        }
+        // หาจุดตัดแรกที่ไม่ใช่แสงหรือเส้นไกด์
+        const hit = intersects.find(item => item.object.type === 'Mesh');
+        if (!hit) return;
 
-        if (hitObj && hitObj.userData.view) {
-          console.log('Picked object:', hitObj.name, '-> View:', hitObj.userData.view);
-          setView(hitObj.userData.view);
+        const p = hit.point;
+        console.log(`📍 จุดที่กดโดน: X = ${p.x.toFixed(2)}, Y = ${p.y.toFixed(2)}, Z = ${p.z.toFixed(2)}`);
+
+        // แยกตามโซนตำแหน่งจริงของวัตถุในห้อง:
+        
+        // 1. ป้ายชื่อ MENU ด้านบน (กำแพงหลัง สูงๆ)
+        if (p.y > 2.0 && p.z < -1.5) {
+          setView('name');
+        }
+        // 2. ชั้นวางขนมเบเกอรี่ (ฝั่งซ้ายของห้อง ค่า X ติดลบ)
+        else if (p.x < -0.3) {
+          setView('bakery');
+        }
+        // 3. เตาอบ/ไมโครเวฟ (มุมขวาบน ค่า X เป็นบวก และ Z ติดลบ)
+        else if (p.x > 0.6 && p.z < 0.0) {
+          setView('microwave');
+        }
+        // 4. เปียโน (มุมขวาล่าง ค่า X เป็นบวก และ Z เป็นบวก)
+        else if (p.x > 0.6 && p.z >= 0.0) {
+          setView('piano');
         }
       }
-    });
+    }
 
-    // เปลี่ยนเคอร์เซอร์เป็นรูปมือเมื่อ Hover ชี้โดนวัตถุที่คลิกได้
-    window.addEventListener('mousemove', (event) => {
-      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
-      raycaster.setFromCamera(mouse, camera);
-      const intersects = raycaster.intersectObjects(clickableObjects, true);
-
-      if (intersects.length > 0) {
-        document.body.style.cursor = 'pointer';
-      } else {
-        document.body.style.cursor = 'default';
-      }
-    });
+    // ดักจับทั้งการคลิกบนคอม และการจิ้มบนจอมือถือ
+    window.addEventListener('pointerdown', onPointerTrigger);
 
 
     // ==========================================
