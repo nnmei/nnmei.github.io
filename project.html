@@ -2,17 +2,20 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>3D Room Viewer</title>
   <style>
     body { margin: 0; overflow: hidden; background: #222; font-family: sans-serif; }
     #menu {
       position: absolute; bottom: 20px; left: 50%;
       transform: translateX(-50%); display: flex; gap: 8px; z-index: 10;
+      flex-wrap: wrap; justify-content: center; width: 90%; max-width: 600px;
     }
     button {
-      padding: 10px 16px; border-radius: 8px; border: none;
+      padding: 8px 14px; border-radius: 8px; border: none;
       background: white; font-weight: bold; cursor: pointer;
-      transition: 0.2s;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3); transition: 0.2s;
+      font-size: 13px;
     }
     button:hover { background: #ffaa00; color: white; }
     
@@ -21,7 +24,7 @@
       position: absolute; top: 15px; left: 15px;
       background: rgba(0, 0, 0, 0.75); color: #00ffcc;
       padding: 10px 14px; border-radius: 6px; font-family: monospace;
-      font-size: 13px; pointer-events: none; z-index: 20;
+      font-size: 12px; pointer-events: none; z-index: 20;
       line-height: 1.5;
     }
   </style>
@@ -37,7 +40,7 @@
   <!-- กล่องแสดงพิกัดแบบเรียลไทม์บนจอ -->
   <div id="cam-info">กำลังโหลดพิกัดกล้อง...</div>
 
-  <!-- ปุ่มกดเลือกมุมมอง (คงไว้ตามเดิม) -->
+  <!-- ปุ่มกดเลือกมุมมอง -->
   <div id="menu">
     <button onclick="setView('overview')">ภาพรวม</button>
     <button onclick="setView('bakery')">หน้าเบเกอรี่</button>
@@ -50,7 +53,7 @@
 
   <script>
     // ==========================================
-    // ⚙️ ส่วนที่ 1: ตั้งค่าพิกัด (ปรับแก้ X, Y, Z ตรงนี้)
+    // ⚙️ ส่วนที่ 1: ตั้งค่าพิกัด
     // ==========================================
     
     const SUN_CONFIG = {
@@ -66,10 +69,11 @@
       distance: 5.0
     };
 
+    // พิกัดกล้อง (อัปเดตมุมมอง overview จากภาพล่าสุด)
     const CAMERA_VIEWS = {
       overview: {
-        camera: { x: 0.0, y: 6.0, z: 8.0 },
-        target: { x: 0.0, y: 1.0, z: 0.0 }
+        camera: { x: -17.79, y: 16.18, z: 14.34 },
+        target: { x: -0.39, y: 0.26, z: 0.18 }
       },
       bakery: {
         camera: { x: -10.61, y: 4.33, z: -0.05 },
@@ -95,7 +99,7 @@
 
 
     // ==========================================
-    // 🎬 ส่วนที่ 2: เริ่มการสร้างฉาก THREE.JS
+    // 🎬 ส่วนที่ 2: เริ่มต้นฉาก THREE.JS
     // ==========================================
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x333333);
@@ -110,7 +114,7 @@
     const controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
 
-    // --- จัดแสง ---
+    // --- ระบบแสง ---
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
     scene.add(ambientLight);
 
@@ -128,61 +132,36 @@
 
 
     // ==========================================
-    // 📦 ส่วนที่ 3: โหลดไฟล์โมเดล GLB + เตรียม Picking
+    // 📦 ส่วนที่ 3: โหลดไฟล์โมเดล GLB
     // ==========================================
     const loader = new THREE.GLTFLoader();
     const modelUrl = 'https://raw.githubusercontent.com/nnmei/nnmei.github.io/main/project14.glb';
 
-    // รายการวัตถุที่สามารถคลิกได้
-    const clickableObjects = [];
-
     loader.load(modelUrl, (gltf) => {
       scene.add(gltf.scene);
       setView('overview', false);
-
-      // วนลูปเก็บ Mesh และแมปเป้าหมายมุมมองตามชื่อโมเดลที่ตั้งไว้ใน Blender
-      gltf.scene.traverse((child) => {
-        if (child.isMesh) {
-          const name = child.name.toLowerCase();
-          
-          // ตรวจจับชื่อโมเดล (ปรับเปลี่ยนคีย์เวิร์ดให้ตรงกับที่ตั้งชื่อไว้ใน Blender ได้)
-          if (name.includes('piano')) {
-            child.userData = { view: 'piano' };
-            clickableObjects.push(child);
-          } else if (name.includes('micro') || name.includes('oven')) {
-            child.userData = { view: 'microwave' };
-            clickableObjects.push(child);
-          } else if (name.includes('bake') || name.includes('bread') || name.includes('shelf')) {
-            child.userData = { view: 'bakery' };
-            clickableObjects.push(child);
-          } else if (name.includes('board') || name.includes('menu') || name.includes('text') || name.includes('name')) {
-            child.userData = { view: 'name' };
-            clickableObjects.push(child);
-          } else if (name.includes('photo') || name.includes('frame') || name.includes('picture')) {
-            child.userData = { view: 'photo' };
-            clickableObjects.push(child);
-          }
-        }
-      });
-      console.log('วัตถุที่คลิกได้ (Clickable meshes):', clickableObjects);
     });
 
 
     // ==========================================
-    // 🎯 ส่วนที่ 4: ฟังก์ชันสลับมุมกล้อง
+    // 🎯 ส่วนที่ 4: ฟังก์ชันสลับมุมกล้อง (แก้ปัญหากล้องล็อค)
     // ==========================================
     function setView(name, animated = true) {
       const view = CAMERA_VIEWS[name];
       if (!view) return;
 
+      // หยุดอนิเมชันเดิมก่อนเสมอเพื่อไม่ให้กล้องเด้งกลับหรือล็อค
+      gsap.killTweensOf(camera.position);
+      gsap.killTweensOf(controls.target);
+
       if (animated) {
         gsap.to(camera.position, {
           x: view.camera.x, y: view.camera.y, z: view.camera.z,
-          duration: 1.2, ease: 'power2.inOut'
+          duration: 1.2, ease: 'power2.out'
         });
         gsap.to(controls.target, {
           x: view.target.x, y: view.target.y, z: view.target.z,
-          duration: 1.2, ease: 'power2.inOut',
+          duration: 1.2, ease: 'power2.out',
           onUpdate: () => controls.update()
         });
       } else {
@@ -192,62 +171,66 @@
       }
     }
 
+
     // ==========================================
-    // 🖱️ ส่วนที่ 5: 3D Interaction (Picking ด้วยพิกัด 3 มิติ)
+    // 🖱️ ส่วนที่ 5: 3D Interaction (Picking & Free Move)
     // ==========================================
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
     function onPointerTrigger(event) {
-      // 1. ถ้าคลิกหรือแตะโดนปุ่ม HTML ให้ข้ามไป
-      if (event.target.closest('#menu') || event.target.tagName.toLowerCase() === 'button') {
+      // หากคลิกโดนปุ่มเมนูให้ข้าม
+      if (event.target.closest('#menu') || (event.target.tagName && event.target.tagName.toLowerCase() === 'button')) {
         return;
       }
 
-      // 2. คำนวณพิกัดจอ (รองรับทั้งเมาส์และนิ้วสัมผัสบนมือถือ)
       const clientX = event.clientX ?? (event.touches && event.touches[0] ? event.touches[0].clientX : null);
       const clientY = event.clientY ?? (event.touches && event.touches[0] ? event.touches[0].clientY : null);
-
       if (clientX === null || clientY === null) return;
 
       mouse.x = (clientX / window.innerWidth) * 2 - 1;
       mouse.y = -(clientY / window.innerHeight) * 2 + 1;
 
       raycaster.setFromCamera(mouse, camera);
-
-      // ยิง Raycaster เข้าไปตรวจจับวัตถุทั้งหมดในฉาก
       const intersects = raycaster.intersectObjects(scene.children, true);
 
       if (intersects.length > 0) {
-        // หาจุดตัดแรกที่ไม่ใช่แสงหรือเส้นไกด์
         const hit = intersects.find(item => item.object.type === 'Mesh');
-        if (!hit) return;
+        if (!hit) {
+          setView('overview');
+          return;
+        }
 
         const p = hit.point;
-        console.log(`📍 จุดที่กดโดน: X = ${p.x.toFixed(2)}, Y = ${p.y.toFixed(2)}, Z = ${p.z.toFixed(2)}`);
 
-        // แยกตามโซนตำแหน่งจริงของวัตถุในห้อง:
-        
-        // 1. ป้ายชื่อ MENU ด้านบน (กำแพงหลัง สูงๆ)
+        // ตรวจจับตามตำแหน่ง 3D ของวัตถุในห้อง
+        // 1. ป้ายชื่อ MENU ด้านบน
         if (p.y > 2.0 && p.z < -1.5) {
           setView('name');
         }
-        // 2. ชั้นวางขนมเบเกอรี่ (ฝั่งซ้ายของห้อง ค่า X ติดลบ)
+        // 2. ชั้นวางขนมเบเกอรี่ (ฝั่งซ้ายของห้อง)
         else if (p.x < -0.3) {
           setView('bakery');
         }
-        // 3. เตาอบ/ไมโครเวฟ (มุมขวาบน ค่า X เป็นบวก และ Z ติดลบ)
+        // 3. เตาอบ/ไมโครเวฟ (โซนขวาบน)
         else if (p.x > 0.6 && p.z < 0.0) {
           setView('microwave');
         }
-        // 4. เปียโน (มุมขวาล่าง ค่า X เป็นบวก และ Z เป็นบวก)
+        // 4. เปียโน (โซนขวาล่าง)
         else if (p.x > 0.6 && p.z >= 0.0) {
           setView('piano');
         }
+        // 5. คลิกโดนพื้นกลางห้อง ให้ถอยกลับมาภาพรวม
+        else {
+          setView('overview');
+        }
+      } else {
+        // คลิกพื้นที่ว่างภายนอกโมเดล ให้ถอยกลับมาภาพรวม
+        setView('overview');
       }
     }
 
-    // ดักจับทั้งการคลิกบนคอม และการจิ้มบนจอมือถือ
+    // รองรับทั้งเมาส์บนคอมและการทัชบนมือถือ
     window.addEventListener('pointerdown', onPointerTrigger);
 
 
